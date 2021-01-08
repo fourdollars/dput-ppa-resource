@@ -1,0 +1,68 @@
+#!/bin/bash
+
+set -euo pipefail
+
+clearup ()
+{
+    rm -f /tmp/input.json
+    rm -f "$BASE"/private.key
+    rm -fr "$HOME"/.gnupg
+}
+
+BASE="$1"
+cd "$1"
+
+trap clearup EXIT INT TERM
+
+exec 3>&1
+exec 1>&2
+jq -M -S . < /dev/stdin > /tmp/input.json
+
+if [ "$(jq -r '.source | has("fingerprint")' < /tmp/input.json)" = 'true' ]; then
+    fingerprint=$(jq -r .source.fingerprint < /tmp/input.json)
+else
+    echo "You need to provide the fingerprint of GPG key."
+    exit 1
+fi
+
+if [ "$(jq -r '.source | has("passphrase")' < /tmp/input.json)" = 'true' ]; then
+    passphrase=$(jq -r .source.passphrase < /tmp/input.json)
+else
+    echo "You need to provide the passphrase of GPG key."
+    exit 1
+fi
+
+if [ "$(jq -r '.source | has("private_key")' < /tmp/input.json)" = 'true' ]; then
+    private_key=$(jq -r .source.private_key < /tmp/input.json)
+else
+    echo "You need to provide the GPG private key to sign Debian source packages."
+    exit 1
+fi
+
+if [ "$(jq -r '.params | has("ppa")' < /tmp/input.json)" = 'true' ]; then
+    ppa=$(jq -r .params.ppa < /tmp/input.json)
+elif [ "$(jq -r '.source | has("ppa")' < /tmp/input.json)" = 'true' ]; then
+    ppa=$(jq -r .source.ppa < /tmp/input.json)
+else
+    echo "You need to provide the ppa."
+    exit 1
+fi
+
+if [ "$(jq -r '.params | has("path")' < /tmp/input.json)" = 'true' ]; then
+    path=$(jq -r .params.path < /tmp/input.json)
+else
+    echo "You need to provide the path."
+    exit 1
+fi
+
+echo "$private_key" > private.key
+echo "$passphrase" | gpg --passphrase-fd 0 --pinentry-mode loopback --import private.key
+
+find "$path" -name '*_source.changes' | while read -r package; do
+  echo "$passphrase" | debsign -p'gpg --passphrase-fd 0 --pinentry-mode loopback' -S -k"$fingerprint" "$package"
+  dput "$ppa" "$package"
+done
+
+json='{"version":{"ppa":"'"$ppa"'","fingerprint":"'"$fingerprint"'"}}'
+
+jq -n "$json" >&3
