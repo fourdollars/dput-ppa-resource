@@ -5,12 +5,9 @@ set -euo pipefail
 clearup ()
 {
     rm -f /tmp/input.json
-    rm -f "$BASE"/private.key
+    rm -f /tmp/private.key
     rm -fr "$HOME"/.gnupg
 }
-
-BASE="$1"
-cd "$1"
 
 trap clearup EXIT INT TERM
 
@@ -39,30 +36,51 @@ else
     exit 1
 fi
 
-if [ "$(jq -r '.params | has("ppa")' < /tmp/input.json)" = 'true' ]; then
+if [ "$(jq -r '.version | has("ppa")' < /tmp/input.json)" = 'true' ]; then
+    ppa=$(jq -r .version.ppa < /tmp/input.json)
+elif [ "$(jq -r '.params | has("ppa")' < /tmp/input.json)" = 'true' ]; then
     ppa=$(jq -r .params.ppa < /tmp/input.json)
 elif [ "$(jq -r '.source | has("ppa")' < /tmp/input.json)" = 'true' ]; then
     ppa=$(jq -r .source.ppa < /tmp/input.json)
 else
-    echo "You need to provide the ppa."
-    exit 1
+    ppa=''
 fi
 
 if [ "$(jq -r '.params | has("path")' < /tmp/input.json)" = 'true' ]; then
     path=$(jq -r .params.path < /tmp/input.json)
 else
-    echo "You need to provide the path."
-    exit 1
+    path=''
 fi
 
-echo "$private_key" > private.key
-echo "$passphrase" | gpg --passphrase-fd 0 --pinentry-mode loopback --import private.key
+case "$0" in
+    (/opt/resource/check)
+        # $1 doesn't exist.
+        json='[{"ppa":"'"$ppa"'","gpg":"'"$fingerprint"'"}]'
+        ;;
+    (/opt/resource/in)
+        cd "$1" # /tmp/build/get
+        json='{"version":{"ppa":"'"$ppa"'","gpg":"'"$fingerprint"'"}}'
+        ;;
+    (/opt/resource/out)
+        cd "$1" # /tmp/build/put
+        if [ -z "$ppa" ]; then
+            echo "You need to provide the ppa."
+            exit 1
+        fi
+        if [ -z "$path" ]; then
+            echo "You need to provide the path."
+            exit 1
+        fi
+        echo "$private_key" > /tmp/private.key
+        echo "$passphrase" | gpg --passphrase-fd 0 --pinentry-mode loopback --import /tmp/private.key
 
-find "$path" -name '*_source.changes' | while read -r package; do
-  echo "$passphrase" | debsign -p'gpg --passphrase-fd 0 --pinentry-mode loopback' -S -k"$fingerprint" "$package"
-  dput "$ppa" "$package"
-done
+        find "$path" -name '*_source.changes' | while read -r package; do
+        echo "$passphrase" | debsign -p'gpg --passphrase-fd 0 --pinentry-mode loopback' -S -k"$fingerprint" "$package"
+            dput "$ppa" "$package"
+        done
 
-json='{"version":{"ppa":"'"$ppa"'","fingerprint":"'"$fingerprint"'"}}'
+        json='{"version":{"ppa":"'"$ppa"'","gpg":"'"$fingerprint"'"}}'
+        ;;
+esac
 
 jq -n "$json" >&3
