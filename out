@@ -36,9 +36,7 @@ else
     exit 1
 fi
 
-if [ "$(jq -r '.version | has("ppa")' < /tmp/input.json)" = 'true' ]; then
-    ppa=$(jq -r .version.ppa < /tmp/input.json)
-elif [ "$(jq -r '.params | has("ppa")' < /tmp/input.json)" = 'true' ]; then
+if [ "$(jq -r '.params | has("ppa")' < /tmp/input.json)" = 'true' ]; then
     ppa=$(jq -r .params.ppa < /tmp/input.json)
 elif [ "$(jq -r '.source | has("ppa")' < /tmp/input.json)" = 'true' ]; then
     ppa=$(jq -r .source.ppa < /tmp/input.json)
