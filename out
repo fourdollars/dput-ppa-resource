@@ -44,6 +44,14 @@ else
     ppa=''
 fi
 
+if [ "$(jq -r '.params | has("check_versions")' < /tmp/input.json)" = 'true' ]; then
+    versions=$(jq -r .params.check_versions < /tmp/input.json)
+elif [ "$(jq -r '.source | has("check_versions")' < /tmp/input.json)" = 'true' ]; then
+    versions=$(jq -r .source.check_versions < /tmp/input.json)
+else
+    versions='check_versions'
+fi
+
 if [ "$(jq -r '.params | has("path")' < /tmp/input.json)" = 'true' ]; then
     path=$(jq -r .params.path < /tmp/input.json)
 else
@@ -71,11 +79,25 @@ case "$0" in
         fi
         echo "$private_key" > /tmp/private.key
         echo "$passphrase" | gpg --passphrase-fd 0 --pinentry-mode loopback --import /tmp/private.key
-
-        find "$path" -name '*_source.changes' | while read -r package; do
-        echo "$passphrase" | debsign -p'gpg --passphrase-fd 0 --pinentry-mode loopback' -S -k"$fingerprint" "$package"
-            dput "$ppa" "$package"
-        done
+        while read -r source_changes; do
+            if [ -f "$versions"/versions.log ]; then
+                package=$(grep ^Source "$source_changes" | awk '{print $2}')
+                version=$(grep ^Version "$source_changes" | awk '{print $2}')
+                while read -r pkg ver _; do
+                    if [ "$pkg" = "$package" ]; then
+                        if dpkg --compare-versions "$version" lt "$ver"; then
+                            echo "$(basename "$source_changes") is less than $ver in the archives."
+                            exit 1
+                        elif dpkg --compare-versions "$version" eq "$ver"; then
+                            echo "$(basename "$source_changes") is equal to $ver in the archives."
+                            exit 1
+                        fi
+                    fi
+                done < "$versions"/versions.log
+            fi
+            echo "$passphrase" | debsign -p'gpg --passphrase-fd 0 --pinentry-mode loopback' -S -k"$fingerprint" "$source_changes"
+            dput "$ppa" "$source_changes"
+        done < <(find "$path" -name '*_source.changes')
 
         json='{"version":{"ppa":"'"$ppa"'","gpg":"'"$fingerprint"'"}}'
         ;;
