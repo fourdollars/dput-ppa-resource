@@ -4,7 +4,6 @@ set -euo pipefail
 
 clearup ()
 {
-    rm -f /tmp/input.json
     rm -f /tmp/private.key
     rm -fr "$HOME"/.gnupg
 }
@@ -13,47 +12,48 @@ trap clearup EXIT INT TERM
 
 exec 3>&1
 exec 1>&2
-jq -M -S . < /dev/stdin > /tmp/input.json
 
-if [ "$(jq -r '.source | has("fingerprint")' < /tmp/input.json)" = 'true' ]; then
-    fingerprint=$(jq -r .source.fingerprint < /tmp/input.json)
+payload="$(cat <&0)"
+
+if [ "$(jq -r '.source | has("fingerprint")' <<< "$payload")" = 'true' ]; then
+    fingerprint=$(jq -r .source.fingerprint <<< "$payload")
 else
     echo "You need to provide the fingerprint of GPG key."
     exit 1
 fi
 
-if [ "$(jq -r '.source | has("passphrase")' < /tmp/input.json)" = 'true' ]; then
-    passphrase=$(jq -r .source.passphrase < /tmp/input.json)
+if [ "$(jq -r '.source | has("passphrase")' <<< "$payload")" = 'true' ]; then
+    passphrase=$(jq -r .source.passphrase <<< "$payload")
 else
     echo "You need to provide the passphrase of GPG key."
     exit 1
 fi
 
-if [ "$(jq -r '.source | has("private_key")' < /tmp/input.json)" = 'true' ]; then
-    private_key=$(jq -r .source.private_key < /tmp/input.json)
+if [ "$(jq -r '.source | has("private_key")' <<< "$payload")" = 'true' ]; then
+    private_key=$(jq -r .source.private_key <<< "$payload")
 else
     echo "You need to provide the GPG private key to sign Debian source packages."
     exit 1
 fi
 
-if [ "$(jq -r '.params | has("ppa")' < /tmp/input.json)" = 'true' ]; then
-    ppa=$(jq -r .params.ppa < /tmp/input.json)
-elif [ "$(jq -r '.source | has("ppa")' < /tmp/input.json)" = 'true' ]; then
-    ppa=$(jq -r .source.ppa < /tmp/input.json)
+if [ "$(jq -r '.params | has("ppa")' <<< "$payload")" = 'true' ]; then
+    ppa=$(jq -r .params.ppa <<< "$payload")
+elif [ "$(jq -r '.source | has("ppa")' <<< "$payload")" = 'true' ]; then
+    ppa=$(jq -r .source.ppa <<< "$payload")
 else
     ppa=''
 fi
 
-if [ "$(jq -r '.params | has("check_versions")' < /tmp/input.json)" = 'true' ]; then
-    versions=$(jq -r .params.check_versions < /tmp/input.json)
-elif [ "$(jq -r '.source | has("check_versions")' < /tmp/input.json)" = 'true' ]; then
-    versions=$(jq -r .source.check_versions < /tmp/input.json)
+if [ "$(jq -r '.params | has("check_versions")' <<< "$payload")" = 'true' ]; then
+    versions=$(jq -r .params.check_versions <<< "$payload")
+elif [ "$(jq -r '.source | has("check_versions")' <<< "$payload")" = 'true' ]; then
+    versions=$(jq -r .source.check_versions <<< "$payload")
 else
     versions='check_versions'
 fi
 
-if [ "$(jq -r '.params | has("path")' < /tmp/input.json)" = 'true' ]; then
-    path=$(jq -r .params.path < /tmp/input.json)
+if [ "$(jq -r '.params | has("path")' <<< "$payload")" = 'true' ]; then
+    path=$(jq -r .params.path <<< "$payload")
 else
     path=''
 fi
