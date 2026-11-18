@@ -96,7 +96,7 @@ case "$0" in
                 done < "$versions"/versions.log
             fi
             echo "$passphrase" | debsign -p'gpg --passphrase-fd 0 --pinentry-mode loopback' -S -k"$fingerprint" "$source_changes"
-            dput "$ppa" "$source_changes"
+            "$(dirname "$0")/dput_proxy.py" "$ppa" "$source_changes"
         done < <(find "$path" -name '*_source.changes')
 
         json='{"version":{"ppa":"'"$ppa"'","gpg":"'"$fingerprint"'"}}'
